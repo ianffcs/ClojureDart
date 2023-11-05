@@ -1,0 +1,195 @@
+(ns sample.first-flutter-app-codelabs-advanced
+  "Sample equals https://dartpad.dev/?id=e7076b40fb17a0fa899f9f7a154a02e8
+   that is referred in the end of https://codelabs.developers.google.com/codelabs/flutter-codelab-first#8"
+  (:require
+    ["package:flutter/material.dart" :as m]
+    ["package:english_words/english_words.dart" :as english]
+    [cljd.flutter :as f]))
+
+(def random-pair-fn english/WordPair.random)
+
+(defonce app-state
+  (atom {:pair           (random-pair-fn)
+         :history        []
+         :favorites      #{}
+         :selected-index 0}))
+
+(defn big-card [^english/WordPair pair]
+  (f/widget
+    :get {{{:flds [primary onPrimary]} .-colorScheme
+           {:flds [displayMedium]}     .-textTheme} m/Theme}
+    (m/Card .color primary)
+    (m/Padding .padding (m/EdgeInsets.all 20))
+    (m/AnimatedSize
+      .duration (Duration .milliseconds 200))
+    (m/MergeSemantics)
+    m/Wrap .children
+    [(m/Text (.first pair)
+             .style (.copyWith displayMedium
+                               .color onPrimary
+                               .fontWeight m/FontWeight.w200))
+     (m/Text (.second pair)
+             .style (.copyWith displayMedium
+                               .color onPrimary
+                               .fontWeight m/FontWeight.bold))]))
+
+(defn toogle-favorite
+  [app-state]
+  (let [{:keys [pair
+                favorites]} @app-state]
+    (if (favorites pair)
+      (swap! app-state assoc :favorites (disj favorites pair))
+      (swap! app-state assoc :favorites (conj favorites pair)))))
+
+(def generator-page
+  (f/widget
+    :watch [{:keys [pair
+                    favorites
+                    history]} app-state :as *app-state]
+    :let [icon (if (favorites pair)
+                 m/Icons.favorite
+                 m/Icons.favorite_border)]
+    m/Center
+    (m/Column .mainAxisAlignment m/MainAxisAlignment.center)
+    .children
+    [(f/widget
+       (m/Expanded .flex 3)
+       (f/widget
+         (m/ShaderMask
+           .blendMode m/BlendMode.dstIn
+           .shaderCallback (fn [bounds]
+                             (-> (m/LinearGradient
+                                   .colors [m/Colors.transparent
+                                            m/Colors.black]
+                                   .stops [0.0 0.5]
+                                   .begin m/Alignment.topCenter
+                                   .end m/Alignment.bottomCenter)
+                                 (.createShader bounds))))
+         (m/AnimatedList
+           .reverse true
+           .padding (m/EdgeInsets.only
+                      .top 100)
+           .initialItemCount (count history)
+           .itemBuilder (fn [context
+                             idx
+                             animation]
+                          (let [{:flds [asLowerCase
+                                        asPascalCase]} ^english/WordPair (nth history idx)]
+                            (f/widget
+                              (m/SizeTransition
+                                .sizeFactor animation)
+                              (m/TextButton.icon
+                                .onPressed (fn []
+                                             (toogle-favorite *app-state)
+                                             nil)
+                                .icon (if (favorites pair)
+                                        (m/Icon m/Icons.favorite
+                                                .size 12)
+                                        (m/SizedBox))
+                                .label (m/Text asLowerCase
+                                               .semanticsLabel asPascalCase))))))))
+     (m/SizedBox .height 10)
+     (big-card pair)
+     (m/SizedBox .height 10)
+     (m/Row
+       .mainAxisSize m/MainAxisSize.min
+       .children [(m/ElevatedButton
+                    .onPressed (fn []
+                                 (swap! app-state assoc :pair (random-pair-fn)))
+                    .child (m/Text "Next"))
+                  (m/ElevatedButton.icon
+                    .label (m/Text "Like")
+                    .icon (m/Icon icon)
+                    .onPressed (fn []
+                                 (toogle-favorite *app-state)))])
+     (m/Spacer .flex 2)]))
+
+(def favorites-page
+  (f/widget
+    :watch [{:keys [favorites]} app-state]
+    :get {{{:flds [primary]}      .-colorScheme
+           {:flds [displaySmall]} .-textTheme} m/Theme}
+    :let [fav-count (count favorites)]
+    (if (zero? fav-count)
+      (m/Center
+        .child (m/Text "No favorites yet!"
+                       .style (m/TextStyle .color primary)))
+      (m/ListView
+        .children
+        (into [(f/widget
+                 (m/Padding .padding (m/EdgeInsets.all 20))
+                 (m/Text (str "You have " fav-count " favorites")
+                         .style (m/TextStyle .color primary)))]
+              (map #(m/ListTile
+                      .leading (m/Icon m/Icons.favorite
+                                       .color primary)
+                      .title (m/Text (.-asLowerCase ^english/WordPair %)
+                                     .style (m/TextStyle .color primary))))
+              favorites)))))
+
+(def my-home-page
+  (f/widget
+    :get {{{:flds [onPrimaryContainer]} .-colorScheme} m/Theme}
+    :watch [{:keys [selected-index]} app-state]
+    m/Scaffold .body
+    m/LayoutBuilder .builder
+    (fn [_context
+         {:flds [maxWidth]
+          :as   ^m/BoxConstraints _constraints}]
+      (let [page (f/widget
+                   (m/Container .color onPrimaryContainer)
+                   (case selected-index
+                     0 generator-page
+                     1 favorites-page
+                     (->> selected-index
+                          (str "no widget for ")
+                          dc/UnimplementedError.
+                          throw)))
+            main-area (f/widget
+                        :get {{{:flds [surfaceVariant]} .-colorScheme} m/Theme}
+                        (m/ColoredBox .color surfaceVariant)
+                        (m/AnimatedSwitcher
+                          .duration (dart:core/Duration .milliseconds 200))
+                        page)]
+        (if (< maxWidth 450)
+          (m/Column
+            .children
+            [(m/Expanded .child main-area)
+             (f/widget
+               m/SafeArea
+               (m/BottomNavigationBar
+                 .currentIndex selected-index
+                 .onTap (fn [value]
+                          (swap! app-state assoc :selected-index value)))
+               .items [(m/BottomNavigationBarItem
+                         .icon (m/Icon m/Icons.home)
+                         .label "Home")
+                       (m/BottomNavigationBarItem
+                         .icon (m/Icon m/Icons.favorite)
+                         .label "Favorites")])])
+          (m/Row
+            .children
+            [(f/widget
+               m/SafeArea
+               (m/NavigationRail
+                 .extended (>= maxWidth 600)
+                 .selectedIndex selected-index
+                 .onDestinationSelected (fn [value]
+                                          (swap! app-state assoc :selected-index value))
+                 .destinations [(m/NavigationRailDestination
+                                  .icon (m/Icon m/Icons.home)
+                                  .label (m/Text "Home"))
+                                (m/NavigationRailDestination
+                                  .icon (m/Icon m/Icons.favorite)
+                                  .label (m/Text "Favorites"))]))
+             (m/Expanded .child main-area)]))))))
+
+(defn main []
+  (f/run
+    (m/MaterialApp
+      .title "My first material app"
+      .theme (m/ThemeData
+               .useMaterial3 true
+               .colorScheme (m/ColorScheme.fromSeed
+                              .seedColor m/Colors.deepOrange)))
+    .home my-home-page))
