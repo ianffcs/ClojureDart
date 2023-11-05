@@ -9,7 +9,7 @@
 (def random-pair-fn english/WordPair.random)
 
 (defonce app-state
-  (atom {:pair           (random-pair-fn)
+  (atom {:word-pair      (random-pair-fn)
          :history        []
          :favorites      #{}
          :selected-index 0}))
@@ -24,29 +24,29 @@
       .duration (Duration .milliseconds 200))
     (m/MergeSemantics)
     m/Wrap .children
-    [(m/Text (.first pair)
+    [(m/Text (.-first pair)
              .style (.copyWith displayMedium
                                .color onPrimary
                                .fontWeight m/FontWeight.w200))
-     (m/Text (.second pair)
+     (m/Text (.-second pair)
              .style (.copyWith displayMedium
                                .color onPrimary
                                .fontWeight m/FontWeight.bold))]))
 
 (defn toogle-favorite
-  [app-state]
-  (let [{:keys [pair
-                favorites]} @app-state]
-    (if (favorites pair)
-      (swap! app-state assoc :favorites (disj favorites pair))
-      (swap! app-state assoc :favorites (conj favorites pair)))))
+  [app-state new-pair]
+  (let [{:keys [favorites]} @app-state]
+    (dart:core/print @app-state)
+    (if (favorites new-pair)
+      (swap! app-state assoc :favorites (disj favorites new-pair))
+      (swap! app-state assoc :favorites (conj favorites new-pair)))))
 
 (def generator-page
   (f/widget
-    :watch [{:keys [pair
+    :watch [{:keys [word-pair
                     favorites
                     history]} app-state :as *app-state]
-    :let [icon (if (favorites pair)
+    :let [icon (if (favorites word-pair)
                  m/Icons.favorite
                  m/Icons.favorite_border)]
     m/Center
@@ -66,6 +66,7 @@
                                    .end m/Alignment.bottomCenter)
                                  (.createShader bounds))))
          (m/AnimatedList
+           .key (m/GlobalKey.)
            .reverse true
            .padding (m/EdgeInsets.only
                       .top 100)
@@ -74,13 +75,15 @@
                              idx
                              animation]
                           (let [{:flds [asLowerCase
-                                        asPascalCase]} ^english/WordPair (nth history idx)]
+                                        asPascalCase]
+                                 :as pair} ^english/WordPair (nth history idx)]
                             (f/widget
                               (m/SizeTransition
                                 .sizeFactor animation)
+                              m/Center
                               (m/TextButton.icon
                                 .onPressed (fn []
-                                             (toogle-favorite *app-state)
+                                             (toogle-favorite *app-state pair)
                                              nil)
                                 .icon (if (favorites pair)
                                         (m/Icon m/Icons.favorite
@@ -89,19 +92,23 @@
                                 .label (m/Text asLowerCase
                                                .semanticsLabel asPascalCase))))))))
      (m/SizedBox .height 10)
-     (big-card pair)
+     (big-card word-pair)
      (m/SizedBox .height 10)
      (m/Row
        .mainAxisSize m/MainAxisSize.min
        .children [(m/ElevatedButton
                     .onPressed (fn []
-                                 (swap! app-state assoc :pair (random-pair-fn)))
+                                 (swap! app-state (fn [{:keys [history
+                                                               word-pair]
+                                                        :as st}]
+                                                    (assoc st :word-pair (random-pair-fn)
+                                                              :history (conj history word-pair)))))
                     .child (m/Text "Next"))
                   (m/ElevatedButton.icon
                     .label (m/Text "Like")
                     .icon (m/Icon icon)
                     .onPressed (fn []
-                                 (toogle-favorite *app-state)))])
+                                 (toogle-favorite *app-state word-pair)))])
      (m/Spacer .flex 2)]))
 
 (def favorites-page
